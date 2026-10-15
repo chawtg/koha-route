@@ -1,11 +1,11 @@
-import { Route } from "react-router-dom";
-import RequireRole from "../auth/RequireRole";
-import LoginPage from "../pages/LoginPage";
-import StaffHomePlaceholder from "../pages/StaffHomePlaceholder";
+import { Route } from 'react-router-dom';
+import RequireRole from '../auth/RequireRole';
+import LoginPage from '../pages/LoginPage';
+import AdminBookingsPage from '../pages/AdminBookingsPage';
+import StaffHomePlaceholder from '../pages/StaffHomePlaceholder';
 
 /**
- * Login plus the two staff areas. Placed inside <Routes> in App.jsx so Part 0's Setup
- * check route is left untouched. Later parts add their screens under /admin and /driver.
+ * Login, Admin booking review, and the driver placeholder, each behind a role guard.
  */
 export const staffRoutes = (
   <>
@@ -14,7 +14,7 @@ export const staffRoutes = (
       path="/admin/*"
       element={
         <RequireRole role="admin">
-          <StaffHomePlaceholder title="Admin dashboard" />
+          <AdminBookingsPage />
         </RequireRole>
       }
     />

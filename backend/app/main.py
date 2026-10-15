@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
+from app.api.admin_bookings import router as admin_bookings_router
 from app.api.auth import router as auth_router
 from app.api.bookings import router as bookings_router
 from app.api.health import router as health_router
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     application.include_router(health_router)
     application.include_router(auth_router)
     application.include_router(bookings_router)
+    application.include_router(admin_bookings_router)
     return application
 
 
