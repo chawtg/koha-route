@@ -6,7 +6,7 @@ values that differ between machines: the database location and the allowed web o
 """
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
@@ -30,6 +30,8 @@ class AppConfig:
         cors_origins: Web origins allowed to call the API from a browser.
         seed_admin_password: Password the seed script gives the demo Admin (demo use only).
         seed_driver_password: Password the seed script gives the demo drivers (demo use only).
+        ors_api_key: Optional OpenRouteService key; omitted from the config repr.
+        photo_storage_dir: Directory for private, randomly named uploaded photographs.
     """
 
     environment: str
@@ -37,6 +39,8 @@ class AppConfig:
     cors_origins: tuple[str, ...]
     seed_admin_password: str = DEFAULT_SEED_ADMIN_PASSWORD
     seed_driver_password: str = DEFAULT_SEED_DRIVER_PASSWORD
+    ors_api_key: str = field(default="", repr=False)
+    photo_storage_dir: Path = BACKEND_DIR / "uploads" / "photos"
 
 
 def _split_csv(raw_value: str) -> tuple[str, ...]:
@@ -62,4 +66,8 @@ def get_config() -> AppConfig:
         cors_origins=_split_csv(os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS)),
         seed_admin_password=os.getenv("SEED_ADMIN_PASSWORD", DEFAULT_SEED_ADMIN_PASSWORD),
         seed_driver_password=os.getenv("SEED_DRIVER_PASSWORD", DEFAULT_SEED_DRIVER_PASSWORD),
+        ors_api_key=os.getenv("ORS_API_KEY", ""),
+        photo_storage_dir=Path(
+            os.getenv("PHOTO_STORAGE_DIR", str(BACKEND_DIR / "uploads" / "photos"))
+        ),
     )
