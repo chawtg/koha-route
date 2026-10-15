@@ -4,14 +4,15 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
-from app.database import create_db_engine, get_db
+from app.database import create_db_engine, create_tables, get_db
 from app.main import app
 
 
 @pytest.fixture()
 def db_session():
-    """Give a test its own empty in-memory database session."""
+    """Give a test its own in-memory database with every table created but no rows."""
     engine = create_db_engine("sqlite://")
+    create_tables(engine)
     session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)()
     try:
         yield session

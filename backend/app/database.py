@@ -66,3 +66,27 @@ def get_db() -> Iterator[Session]:
         yield session
     finally:
         session.close()
+
+
+def create_tables(target_engine: Engine | None = None) -> None:
+    """Create every table that does not exist yet (safe to run repeatedly).
+
+    Args:
+        target_engine: Engine to create the tables in. Defaults to the application engine.
+    """
+    # Imported here, not at the top: the models import ``Base`` from this module, so a
+    # top-level import would be circular. Importing them is what registers their tables.
+    from app import models  # noqa: F401
+
+    Base.metadata.create_all(bind=target_engine or engine)
+
+
+def drop_tables(target_engine: Engine | None = None) -> None:
+    """Delete every table and all its data (used only by ``python -m app.seed --reset``).
+
+    Args:
+        target_engine: Engine to drop the tables from. Defaults to the application engine.
+    """
+    from app import models  # noqa: F401
+
+    Base.metadata.drop_all(bind=target_engine or engine)

@@ -42,3 +42,16 @@ def today_nz(now: datetime | None = None) -> date:
     """
     moment = now if now is not None else datetime.now(UTC)
     return to_nz_time(moment).date()
+
+
+def utc_now_naive() -> datetime:
+    """Return the current UTC time without time-zone information.
+
+    Database timestamps (``created_at`` and so on) are stored in UTC. SQLite cannot keep a
+    time zone with a value, so we drop it here on purpose and convert to NZ time only when a
+    time is shown to a person.
+
+    Returns:
+        The current moment in UTC as a naive datetime.
+    """
+    return datetime.now(UTC).replace(tzinfo=None)

@@ -2,7 +2,7 @@ from datetime import UTC, date, datetime, timedelta, timezone
 
 import pytest
 
-from app.timeutil import to_nz_time, today_nz
+from app.timeutil import to_nz_time, today_nz, utc_now_naive
 
 # NZ daylight time (UTC+13) runs from 27 Sep 2026; standard time (UTC+12) applies in July.
 
@@ -39,3 +39,7 @@ def test_to_nz_time_rejects_naive_datetime():
 
 def test_today_nz_without_argument_returns_a_date():
     assert isinstance(today_nz(), date)
+
+
+def test_utc_now_naive_has_no_time_zone():
+    assert utc_now_naive().tzinfo is None
