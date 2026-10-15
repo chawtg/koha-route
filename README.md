@@ -2,9 +2,9 @@
 
 Pickup booking and route planning for Auckland Community Centre. Team Koha.
 
-This repository currently includes Parts 0-7: the foundation, seeded data/settings, staff login,
-donor pickup booking and tracking, Admin booking review, vehicle management, and ORS route planning.
-Later features arrive one part at a time.
+This repository currently includes Parts 0-8: the foundation, seeded data/settings, staff login,
+donor pickup booking and tracking, Admin booking review, vehicle management, ORS route planning,
+and driver routes and pickup updates. Later features arrive one part at a time.
 
 ## Folder layout
 
@@ -183,7 +183,15 @@ failed database writes roll back and remove any already-written photo files.
 | `routes` | Saved driver/vehicle plans, geometry, distance/duration and planned estimates |
 | `route_stops` | ORS-ordered booking stops and lifecycle status |
 
-Driver stop updates arrive in Part 8.
+## Driver routes and pickup updates (Part 8)
+
+Drivers open `/driver` to see only their assigned route for the selected day (NZ today by default),
+with the next Scheduled stop first. Stop details include donor contact, categories, description,
+photos, and a Google Maps navigation link. The route map uses the geometry saved in Part 7 and
+does not call ORS. Drivers can mark a Scheduled stop Completed or Missed; Missed requires a remark.
+The backend records the new stop/booking status, timestamp, remark, and driver, and prevents a
+driver from reading or updating another driver's route. Completed and Missed stops cannot be
+changed by a driver; Missed bookings must be rescheduled by an Admin.
 
 ## Holiday data
 
@@ -194,7 +202,7 @@ confirm Auckland Anniversary Day (26 Jan 2026 and 1 Feb 2027) with the client be
 
 ## Known limits
 
-- Driver workflow and the operational map/totals are not built yet.
+- The Admin operational map and weight/volume totals are not built yet.
 - The size presets, vehicle capacities, categories and depot coordinates are placeholders
   awaiting client confirmation. The depot coordinates are approximate pending a later ORS lookup.
 - There is no migration tool: the schema is created from the models. After a model change in
