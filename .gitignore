@@ -12,14 +12,28 @@
 *.sqlite3
 uploads/
 
-# Python build and test output
+# Python environments, bytecode, build and test output
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
 *.egg-info/
+.pytest_cache/
+.ruff_cache/
 .coverage
+.coverage.*
 htmlcov/
 .mypy_cache/
+build/
 
 # Node and Vite
+node_modules/
+dist/
 .vite/
+coverage/
 *.tsbuildinfo
 npm-debug.log*
 yarn-error.log*
