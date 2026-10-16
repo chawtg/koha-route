@@ -23,6 +23,7 @@ import polyline from '@mapbox/polyline';
 import { useAuth } from '../auth/AuthContext';
 import { fetchDriverPhoto, getMyRoutes, getNzToday, updateMyStop } from '../api/driverRoutes';
 import { ApiError } from '../api/http';
+import { statusColors } from '../theme';
 import 'leaflet/dist/leaflet.css';
 
 const DEFAULT_DEPOT = [-36.815, 174.61];
@@ -66,12 +67,12 @@ function formatDuration(seconds) {
 
 function stopIcon(stop, isNext) {
     const background = isNext
-        ? '#247BA0'
+        ? '#12343B'
         : stop.status === 'completed'
-            ? '#2e7d32'
+            ? statusColors.completed
             : stop.status === 'missed'
-                ? '#ed6c02'
-                : '#6b8fa3';
+                ? statusColors.missed
+                : statusColors.scheduled;
     const size = isNext ? 36 : 28;
     return divIcon({
         className: 'koha-driver-stop-marker',
