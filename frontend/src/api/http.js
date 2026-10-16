@@ -3,7 +3,7 @@
 // The browser calls /api/... and the Vite proxy forwards it to the backend (Part 0).
 import { clearToken, getToken } from "../auth/tokenStorage";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
 export class ApiError extends Error {
   constructor(status, message, field = undefined) {

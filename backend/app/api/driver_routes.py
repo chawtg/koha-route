@@ -36,8 +36,38 @@ router = APIRouter(
 )
 
 
+def _stop_out(stop: RouteStop) -> DriverStopOut:
+    """Build one stop response: the single place that decides what a driver may see."""
+    booking = stop.booking
+    return DriverStopOut(
+        booking_id=stop.booking_id,
+        reference=booking.reference,
+        sequence=stop.sequence,
+        status=stop.status.value,
+        address_text=booking.address_text,
+        latitude=booking.latitude,
+        longitude=booking.longitude,
+        donor_name=booking.donor_name,
+        contact_number=booking.contact_number,
+        category_names=[category.name for category in booking.categories],
+        estimated_weight_kg=booking.estimated_weight_kg,
+        estimated_volume_l=booking.estimated_volume_l,
+        description=booking.description,
+        remark=stop.remark,
+        completed_at=stop.completed_at.isoformat() if stop.completed_at else None,
+        updated_by_user_id=stop.updated_by_user_id,
+        photos=[
+            DriverPhotoOut(id=photo.id, content_type=photo.content_type)
+            for photo in booking.photos
+        ],
+    )
+
+
 def _route_out(route: Route) -> DriverRouteOut:
-    """Build a route response containing only details relevant to its assigned driver."""
+    """Build a route response containing only details relevant to its assigned driver.
+
+    The route line is the geometry saved by US-06, so no routing service is called here.
+    """
     return DriverRouteOut(
         id=route.id,
         pickup_date=route.pickup_date,
@@ -49,29 +79,7 @@ def _route_out(route: Route) -> DriverRouteOut:
         total_duration_s=route.total_duration_s,
         planned_weight_kg=route.planned_weight_kg,
         planned_volume_l=route.planned_volume_l,
-        stops=[
-            DriverStopOut(
-                booking_id=stop.booking_id,
-                reference=stop.booking.reference,
-                sequence=stop.sequence,
-                status=stop.status.value,
-                address_text=stop.booking.address_text,
-                latitude=stop.booking.latitude,
-                longitude=stop.booking.longitude,
-                donor_name=stop.booking.donor_name,
-                contact_number=stop.booking.contact_number,
-                category_names=[category.name for category in stop.booking.categories],
-                estimated_weight_kg=stop.booking.estimated_weight_kg,
-                estimated_volume_l=stop.booking.estimated_volume_l,
-                description=stop.booking.description,
-                remark=stop.remark,
-                photos=[
-                    DriverPhotoOut(id=photo.id, content_type=photo.content_type)
-                    for photo in stop.booking.photos
-                ],
-            )
-            for stop in route.stops
-        ],
+        stops=[_stop_out(stop) for stop in sorted(route.stops, key=lambda item: item.sequence)],
     )
 
 
@@ -122,23 +130,7 @@ def update_my_stop(
         )
     except (DriverRouteForbiddenError, DriverRouteNotFoundError, DriverStopTransitionError, ValueError) as error:
         raise _translate_access_error(error) from error
-    return DriverStopOut(
-        booking_id=stop.booking_id,
-        reference=stop.booking.reference,
-        sequence=stop.sequence,
-        status=stop.status.value,
-        address_text=stop.booking.address_text,
-        latitude=stop.booking.latitude,
-        longitude=stop.booking.longitude,
-        donor_name=stop.booking.donor_name,
-        contact_number=stop.booking.contact_number,
-        category_names=[category.name for category in stop.booking.categories],
-        estimated_weight_kg=stop.booking.estimated_weight_kg,
-        estimated_volume_l=stop.booking.estimated_volume_l,
-        description=stop.booking.description,
-        remark=stop.remark,
-        photos=[DriverPhotoOut(id=photo.id, content_type=photo.content_type) for photo in stop.booking.photos],
-    )
+    return _stop_out(stop)
 
 
 @router.get("/{route_id}/stops/{booking_id}/photos/{photo_id}")
@@ -158,4 +150,8 @@ def read_my_stop_photo(
     photo_path = (photo_directory / photo.stored_name).resolve()
     if photo_path.parent != photo_directory or not photo_path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
-    return FileResponse(photo_path, media_type=photo.content_type)
+    return FileResponse(
+        photo_path,
+        media_type=photo.content_type,
+        headers={"Cache-Control": "private, max-age=300"},
+    )

@@ -63,8 +63,16 @@ function statusColor(status) {
     }
 }
 
+// Completed/Missed stops use their status colour; otherwise keep the route colour.
+function stopMarkerColor(stop, routeColor) {
+    if (stop.status === 'completed' || stop.status === 'missed') return statusColor(stop.status);
+    return routeColor;
+}
+
 function FitRoutes({ routes }) {
     const map = useMap();
+    // Refit only when the plan itself changes, not when a stop status refreshes.
+    const fitKey = routes.map((route) => `${route.id}:${route.geometry ?? ''}:${route.stops.length}`).join('|');
     useEffect(() => {
         const points = routes.flatMap((route) => {
             const geometryPoints = route.geometry ? polyline.decode(route.geometry) : [];
@@ -74,7 +82,8 @@ function FitRoutes({ routes }) {
         });
         if (points.length) map.fitBounds(points, { padding: [24, 24], maxZoom: 14 });
         else map.setView(DEFAULT_DEPOT, 10);
-    }, [map, routes]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [map, fitKey]);
     return null;
 }
 
@@ -189,6 +198,14 @@ export default function AdminRoutesPage() {
         }
     }
 
+    async function refreshRoutes(dateValue) {
+        try {
+            setRoutes(await getAdminRoutes(dateValue));
+        } catch {
+            // keep the last known routes if a background refresh fails
+        }
+    }
+
     async function loadDailyTotals(dateValue) {
         try {
             const totals = await getRouteDailyTotals(dateValue);
@@ -201,6 +218,7 @@ export default function AdminRoutesPage() {
     function startPolling() {
         if (pollTimer) clearInterval(pollTimer);
         const timer = setInterval(() => {
+            refreshRoutes(pickupDate);
             loadMapMarkers(pickupDate);
             loadDailyTotals(pickupDate);
             setLastRefresh(new Date().toISOString());
@@ -474,7 +492,7 @@ export default function AdminRoutesPage() {
                                                 position={[stop.latitude, stop.longitude]}
                                                 icon={divIcon({
                                                     className: 'koha-route-stop-marker',
-                                                    html: `<span style="background:${route.color};width:26px;height:26px;border-radius:50%;border:2px solid white;color:white;display:flex;align-items:center;justify-content:center;font-weight:700;box-shadow:0 1px 4px #333">${stop.sequence}</span>`,
+                                                    html: `<span style="background:${stopMarkerColor(stop, route.color)};width:26px;height:26px;border-radius:50%;border:2px solid white;color:white;display:flex;align-items:center;justify-content:center;font-weight:700;box-shadow:0 1px 4px #333">${stop.sequence}</span>`,
                                                     iconSize: [26, 26],
                                                     iconAnchor: [13, 13],
                                                 })}

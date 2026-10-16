@@ -1,4 +1,4 @@
-import { apiRequest } from './http';
+import { API_BASE, apiRequest } from './http';
 import { getToken } from '../auth/tokenStorage';
 
 /** Get the server's New Zealand calendar date for the route page's default. */
@@ -26,7 +26,7 @@ export function updateMyStop(routeId, bookingId, status, remark = '') {
 /** Fetch a private route photo through the authenticated assigned-driver endpoint. */
 export async function fetchDriverPhoto(routeId, bookingId, photoId, signal) {
     const response = await fetch(
-        `/api/driver/routes/${routeId}/stops/${bookingId}/photos/${photoId}`,
+        `${API_BASE}/api/driver/routes/${routeId}/stops/${bookingId}/photos/${photoId}`,
         { headers: { Authorization: `Bearer ${getToken()}` }, signal },
     );
     if (!response.ok) throw new Error('Could not load this photo.');

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
     Alert,
     Box,
@@ -22,9 +22,28 @@ import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-
 import polyline from '@mapbox/polyline';
 import { useAuth } from '../auth/AuthContext';
 import { fetchDriverPhoto, getMyRoutes, getNzToday, updateMyStop } from '../api/driverRoutes';
+import { ApiError } from '../api/http';
 import 'leaflet/dist/leaflet.css';
 
 const DEFAULT_DEPOT = [-36.815, 174.61];
+const TAP_TARGET = 48; // px; comfortably above the 44px minimum for touch
+const WRAP_LONG_TEXT = { overflowWrap: 'anywhere', minWidth: 0 };
+
+/** Decode the saved route line; a corrupt value must never blank the whole page. */
+function decodePath(geometry) {
+    if (!geometry) return [];
+    try {
+        return polyline.decode(geometry);
+    } catch {
+        return [];
+    }
+}
+
+/** Show a friendly message for server failures, but keep the network message as is. */
+function loadErrorMessage(error) {
+    if (error instanceof ApiError && error.status > 0) return 'Could not load your route.';
+    return error?.message || 'Could not load your route.';
+}
 
 function formatDate(value) {
     return new Intl.DateTimeFormat('en-NZ', {
@@ -45,15 +64,33 @@ function formatDuration(seconds) {
     return hours ? `${hours} h ${minutes % 60} min` : `${minutes} min`;
 }
 
-function DriverMap({ route }) {
+function stopIcon(stop, isNext) {
+    const background = isNext
+        ? '#247BA0'
+        : stop.status === 'completed'
+            ? '#2e7d32'
+            : stop.status === 'missed'
+                ? '#ed6c02'
+                : '#6b8fa3';
+    const size = isNext ? 36 : 28;
+    return divIcon({
+        className: 'koha-driver-stop-marker',
+        html: `<span style="background:${background};width:${size}px;height:${size}px;border-radius:50%;border:2px solid white;color:white;display:flex;align-items:center;justify-content:center;font-weight:700;box-shadow:0 1px 4px #333">${Number(stop.sequence)}</span>`,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+    });
+}
+
+function DriverMap({ route, nextBookingId }) {
     const map = useMap();
+    // Decode once per saved line. Keyed on the geometry (not the route object) so marking a
+    // stop done does not reset the zoom and position the driver has chosen.
+    const path = useMemo(() => decodePath(route.geometry), [route.geometry]);
     useEffect(() => {
-        const path = route.geometry ? polyline.decode(route.geometry) : [];
         if (path.length) map.fitBounds(path, { padding: [24, 24], maxZoom: 14 });
         else map.setView(DEFAULT_DEPOT, 10);
-    }, [map, route]);
+    }, [map, path]);
 
-    const path = route.geometry ? polyline.decode(route.geometry) : [];
     return (
         <>
             <TileLayer
@@ -65,12 +102,7 @@ function DriverMap({ route }) {
                 <Marker
                     key={stop.booking_id}
                     position={[stop.latitude, stop.longitude]}
-                    icon={divIcon({
-                        className: 'koha-driver-stop-marker',
-                        html: `<span style="background:#247BA0;width:28px;height:28px;border-radius:50%;border:2px solid white;color:white;display:flex;align-items:center;justify-content:center;font-weight:700;box-shadow:0 1px 4px #333">${stop.sequence}</span>`,
-                        iconSize: [28, 28],
-                        iconAnchor: [14, 14],
-                    })}
+                    icon={stopIcon(stop, stop.booking_id === nextBookingId)}
                 >
                     <Popup>
                         <strong>{stop.sequence}. {stop.address_text}</strong>
@@ -83,37 +115,65 @@ function DriverMap({ route }) {
     );
 }
 
+const PHOTO_BOX = {
+    width: 92,
+    height: 92,
+    borderRadius: 1,
+    border: '1px solid',
+    borderColor: 'divider',
+};
+
 function DriverPhoto({ routeId, stop, photo, index }) {
     const [imageUrl, setImageUrl] = useState('');
+    const [failed, setFailed] = useState(false);
     useEffect(() => {
         const controller = new AbortController();
         let objectUrl = '';
+        setImageUrl('');
+        setFailed(false);
         fetchDriverPhoto(routeId, stop.booking_id, photo.id, controller.signal)
             .then((url) => {
                 objectUrl = url;
                 setImageUrl(url);
             })
-            .catch(() => setImageUrl(''));
+            .catch(() => {
+                if (!controller.signal.aborted) setFailed(true);
+            });
         return () => {
             controller.abort();
             if (objectUrl) URL.revokeObjectURL(objectUrl);
         };
     }, [routeId, stop.booking_id, photo.id]);
 
-    if (!imageUrl) return null;
+    if (failed) {
+        // Tell the driver a photo exists but could not be shown, rather than hiding it.
+        return (
+            <Box
+                role="img"
+                aria-label={`Donation item ${index + 1} could not be loaded`}
+                sx={{
+                    ...PHOTO_BOX,
+                    display: 'grid',
+                    placeItems: 'center',
+                    p: 0.5,
+                    textAlign: 'center',
+                    color: 'text.secondary',
+                    typography: 'caption',
+                }}
+            >
+                Photo unavailable
+            </Box>
+        );
+    }
+    if (!imageUrl) {
+        return <Box aria-hidden sx={{ ...PHOTO_BOX, bgcolor: 'action.hover' }} />;
+    }
     return (
         <Box
             component="img"
             src={imageUrl}
             alt={`Donation item ${index + 1}`}
-            sx={{
-                width: 92,
-                height: 92,
-                objectFit: 'cover',
-                borderRadius: 1,
-                border: '1px solid',
-                borderColor: 'divider',
-            }}
+            sx={{ ...PHOTO_BOX, objectFit: 'cover' }}
         />
     );
 }
@@ -154,10 +214,10 @@ function StopCard({ route, stop, isNext, onUpdate, isUpdating }) {
                             <Typography variant="overline" color={isNext ? 'primary.main' : 'text.secondary'}>
                                 {isNext ? 'Next stop' : `Stop ${stop.sequence}`}
                             </Typography>
-                            <Typography component="h2" variant="h6" sx={{ overflowWrap: 'anywhere' }}>
+                            <Typography component="h2" variant="h6" sx={WRAP_LONG_TEXT}>
                                 {stop.address_text}
                             </Typography>
-                            <Typography variant="body2" color="text.secondary">
+                            <Typography variant="body2" color="text.secondary" sx={WRAP_LONG_TEXT}>
                                 {stop.reference} · {stop.status.charAt(0).toUpperCase() + stop.status.slice(1)}
                             </Typography>
                         </Box>
@@ -172,12 +232,12 @@ function StopCard({ route, stop, isNext, onUpdate, isUpdating }) {
 
                     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                         <Button
-                            component={Link}
+                            component="a"
                             href={mapsUrl}
                             target="_blank"
-                            rel="noreferrer"
+                            rel="noopener noreferrer"
                             variant="outlined"
-                            sx={{ minHeight: 48, flex: { sm: 1 } }}
+                            sx={{ minHeight: TAP_TARGET, flex: { sm: 1 } }}
                         >
                             Navigate with Google Maps
                         </Button>
@@ -187,7 +247,7 @@ function StopCard({ route, stop, isNext, onUpdate, isUpdating }) {
                                     variant="contained"
                                     onClick={() => onUpdate(route.id, stop.booking_id, 'completed', '')}
                                     disabled={isUpdating}
-                                    sx={{ minHeight: 48, flex: { sm: 1 } }}
+                                    sx={{ minHeight: TAP_TARGET, flex: { sm: 1 } }}
                                 >
                                     {isUpdating ? <CircularProgress size={22} color="inherit" /> : 'Mark completed'}
                                 </Button>
@@ -196,7 +256,7 @@ function StopCard({ route, stop, isNext, onUpdate, isUpdating }) {
                                     color="warning"
                                     onClick={() => setMissedDialogOpen(true)}
                                     disabled={isUpdating}
-                                    sx={{ minHeight: 48, flex: { sm: 1 } }}
+                                    sx={{ minHeight: TAP_TARGET, flex: { sm: 1 } }}
                                 >
                                     Mark missed
                                 </Button>
@@ -208,21 +268,25 @@ function StopCard({ route, stop, isNext, onUpdate, isUpdating }) {
                         <Stack spacing={1.5} sx={{ pt: 1 }}>
                             <Box>
                                 <Typography variant="subtitle2">Donor</Typography>
-                                <Typography>{stop.donor_name}</Typography>
-                                <Link href={`tel:${stop.contact_number}`} underline="hover">
+                                <Typography sx={WRAP_LONG_TEXT}>{stop.donor_name}</Typography>
+                                <Link
+                                    href={`tel:${stop.contact_number.replace(/[^+\d]/g, '')}`}
+                                    underline="hover"
+                                    sx={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, ...WRAP_LONG_TEXT }}
+                                >
                                     {stop.contact_number}
                                 </Link>
                             </Box>
                             <Box>
                                 <Typography variant="subtitle2">Categories</Typography>
-                                <Typography>{stop.category_names.join(', ')}</Typography>
+                                <Typography sx={WRAP_LONG_TEXT}>{stop.category_names.join(', ')}</Typography>
                             </Box>
                             <Typography variant="body2" color="text.secondary">
                                 Estimated load: {stop.estimated_weight_kg} kg · {stop.estimated_volume_l} L
                             </Typography>
                             <Box>
                                 <Typography variant="subtitle2">Description</Typography>
-                                <Typography sx={{ whiteSpace: 'pre-wrap' }}>
+                                <Typography sx={{ whiteSpace: 'pre-wrap', ...WRAP_LONG_TEXT }}>
                                     {stop.description || 'No description provided.'}
                                 </Typography>
                             </Box>
@@ -230,14 +294,15 @@ function StopCard({ route, stop, isNext, onUpdate, isUpdating }) {
                                 <Typography variant="subtitle2" sx={{ mb: 0.75 }}>Photos</Typography>
                                 {stop.photos.length ? (
                                     <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                                        {stop.photos.map((photo, index) => (
-                                            <DriverPhoto key={photo.id} routeId={route.id} stop={stop} photo={photo} index={index} />
-                                        ))}
+                                        {expanded &&
+                                            stop.photos.map((photo, index) => (
+                                                <DriverPhoto key={photo.id} routeId={route.id} stop={stop} photo={photo} index={index} />
+                                            ))}
                                     </Stack>
                                 ) : <Typography color="text.secondary">No photos attached.</Typography>}
                             </Box>
                             {stop.remark && (
-                                <Alert severity={stop.status === 'missed' ? 'warning' : 'success'}>
+                                <Alert severity={stop.status === 'missed' ? 'warning' : 'success'} sx={WRAP_LONG_TEXT}>
                                     {stop.remark}
                                 </Alert>
                             )}
@@ -263,8 +328,13 @@ function StopCard({ route, stop, isNext, onUpdate, isUpdating }) {
                     />
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setMissedDialogOpen(false)}>Cancel</Button>
-                    <Button color="warning" onClick={submitMissed} disabled={!remark.trim() || isUpdating}>
+                    <Button onClick={() => setMissedDialogOpen(false)} sx={{ minHeight: 44 }}>Cancel</Button>
+                    <Button
+                        color="warning"
+                        onClick={submitMissed}
+                        disabled={!remark.trim() || isUpdating}
+                        sx={{ minHeight: 44 }}
+                    >
                         Confirm missed
                     </Button>
                 </DialogActions>
@@ -281,6 +351,7 @@ export default function DriverRoutePage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isUpdating, setIsUpdating] = useState(false);
     const [error, setError] = useState('');
+    const [actionError, setActionError] = useState('');
     const [notice, setNotice] = useState('');
     const [retry, setRetry] = useState(0);
     const [todayRetry, setTodayRetry] = useState(0);
@@ -298,7 +369,7 @@ export default function DriverRoutePage() {
             })
             .catch((requestError) => {
                 if (active) {
-                    setError(requestError.message || 'Could not determine today in New Zealand time.');
+                    setError(loadErrorMessage(requestError));
                     setIsLoading(false);
                 }
             });
@@ -312,13 +383,15 @@ export default function DriverRoutePage() {
         let active = true;
         setIsLoading(true);
         setError('');
+        setActionError('');
+        setNotice('');
         setRoutes([]);
         getMyRoutes(pickupDate)
             .then((result) => {
                 if (active) setRoutes(result);
             })
             .catch((requestError) => {
-                if (active) setError(requestError.message || 'Could not load your route.');
+                if (active) setError(loadErrorMessage(requestError));
             })
             .finally(() => {
                 if (active) setIsLoading(false);
@@ -335,7 +408,7 @@ export default function DriverRoutePage() {
 
     async function handleStopUpdate(routeId, bookingId, status, remark) {
         setIsUpdating(true);
-        setError('');
+        setActionError('');
         setNotice('');
         try {
             const updatedStop = await updateMyStop(routeId, bookingId, status, remark);
@@ -355,7 +428,7 @@ export default function DriverRoutePage() {
             setNotice(status === 'completed' ? 'Pickup marked completed.' : 'Pickup marked missed.');
             return true;
         } catch (requestError) {
-            setError(requestError.message || 'Could not update this pickup. Try again.');
+            setActionError(requestError.message || 'Could not update this pickup. Try again.');
             return false;
         } finally {
             setIsUpdating(false);
@@ -385,12 +458,19 @@ export default function DriverRoutePage() {
                 label="Route date"
                 type="date"
                 value={pickupDate}
-                onChange={(event) => setPickupDate(event.target.value)}
+                onChange={(event) => {
+                    if (event.target.value) setPickupDate(event.target.value);
+                }}
                 InputLabelProps={{ shrink: true }}
                 sx={{ width: { xs: '100%', sm: 240 }, mb: 2 }}
             />
 
             {notice && <Alert severity="success" onClose={() => setNotice('')} sx={{ mb: 2 }}>{notice}</Alert>}
+            {actionError && (
+                <Alert severity="error" onClose={() => setActionError('')} sx={{ mb: 2, ...WRAP_LONG_TEXT }}>
+                    {actionError}
+                </Alert>
+            )}
             {error && (
                 <Alert
                     severity="error"
@@ -400,11 +480,12 @@ export default function DriverRoutePage() {
                             onClick={() => pickupDate
                                 ? setRetry((value) => value + 1)
                                 : setTodayRetry((value) => value + 1)}
+                            sx={{ minHeight: 44, minWidth: 44 }}
                         >
                             Try again
                         </Button>
                     )}
-                    sx={{ mb: 2 }}
+                    sx={{ mb: 2, alignItems: 'center', ...WRAP_LONG_TEXT }}
                 >
                     {error}
                 </Alert>
@@ -415,13 +496,13 @@ export default function DriverRoutePage() {
                 </Box>
             )}
             {!isLoading && !error && !route && (
-                <Alert severity="info">{pickupDate === nzToday ? 'No route assigned for today' : 'No route assigned for this day'}.</Alert>
+                <Alert severity="info">{pickupDate === nzToday ? 'No route assigned for today' : 'No route assigned for this day'}</Alert>
             )}
             {!isLoading && route && (
                 <Stack spacing={2}>
                     <Box>
                         <Typography variant="h6">{formatDate(route.pickup_date)}</Typography>
-                        <Typography color="text.secondary">
+                        <Typography color="text.secondary" sx={WRAP_LONG_TEXT}>
                             {route.vehicle_name} · {route.vehicle_plate_number} · {formatDistance(route.total_distance_m)} · {formatDuration(route.total_duration_s)}
                         </Typography>
                     </Box>
@@ -432,9 +513,14 @@ export default function DriverRoutePage() {
                             style={{ height: '100%', width: '100%' }}
                             scrollWheelZoom={false}
                         >
-                            <DriverMap route={route} />
+                            <DriverMap route={route} nextBookingId={nextStop?.booking_id} />
                         </MapContainer>
                     </Box>
+                    {orderedStops.length === 0 && (
+                        <Alert severity="warning">
+                            No stops on this route. Please contact the office if you expected pickups.
+                        </Alert>
+                    )}
                     {nextStop && (
                         <StopCard
                             route={route}

@@ -30,6 +30,8 @@ class DriverStopOut(BaseModel):
     estimated_volume_l: int
     description: str | None
     remark: str | None
+    completed_at: str | None = None
+    updated_by_user_id: int | None = None
     photos: list[DriverPhotoOut]
 
 
